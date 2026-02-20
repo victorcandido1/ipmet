@@ -1,0 +1,16 @@
+simple-salesforce
+pandas
+streamlit
+plotly
+python-dotenv
+openpyxl
+requests
+schedule
+selenium
+webdriver-manager
+Pillow
+matplotlib
+contextily
+geopandas
+scipy
+kaleido
