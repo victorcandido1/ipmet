@@ -160,20 +160,35 @@ def _download_image(url):
         return None
 
 
-def _format_message(tendencia):
-    """Formata mensagem para Telegram."""
+def _format_header(tendencia):
+    """Formata cabecalho para mensagem separada."""
     lines = ['<b>🌤 TENDÊNCIA DO TEMPO - SÃO PAULO</b>']
     lines.append(f'<i>Fonte: IPMet/UNESP</i>')
     if tendencia['atualizacao']:
         lines.append(f'📅 Atualização: {tendencia["atualizacao"]}')
-    lines.append('')
+    return '\n'.join(lines)
 
+
+def _format_caption(dia):
+    """Formata legenda da imagem com titulo e texto do dia."""
+    return f"{dia['titulo']}\n\n{dia['texto']}"
+
+
+def _send_tendencia(notifier, tendencia):
+    """Envia cabecalho + imagens com legendas via Telegram."""
+    # Mensagem separada com cabecalho
+    notifier.send_message(_format_header(tendencia))
+
+    # Cada imagem com o texto do dia como legenda
     for dia in tendencia['dias']:
-        lines.append(f'<b>{dia["titulo"]}</b>')
-        lines.append(dia['texto'])
-        lines.append('')
-
-    return '\n'.join(lines).strip()
+        if dia['imagem']:
+            img_path = _download_image(dia['imagem'])
+            if img_path:
+                notifier.send_photo(img_path, _format_caption(dia))
+                try:
+                    os.unlink(img_path)
+                except Exception:
+                    pass
 
 
 def check_and_notify(notifier):
@@ -205,21 +220,7 @@ def check_and_notify(notifier):
 
     logger.info('IPMet Tendencia: mudanca detectada, enviando...')
 
-    # Enviar texto
-    msg = _format_message(tendencia)
-    notifier.send_message(msg)
-
-    # Enviar imagens
-    for dia in tendencia['dias']:
-        if dia['imagem']:
-            img_path = _download_image(dia['imagem'])
-            if img_path:
-                caption = f"Tendência - {dia['titulo']}"
-                notifier.send_photo(img_path, caption)
-                try:
-                    os.unlink(img_path)
-                except Exception:
-                    pass
+    _send_tendencia(notifier, tendencia)
 
     _save_state(new_hash)
     logger.info('IPMet Tendencia enviada com sucesso')
@@ -239,19 +240,7 @@ def force_send(notifier):
         logger.error('Secao TENDENCIA nao encontrada')
         return False
 
-    msg = _format_message(tendencia)
-    notifier.send_message(msg)
-
-    for dia in tendencia['dias']:
-        if dia['imagem']:
-            img_path = _download_image(dia['imagem'])
-            if img_path:
-                caption = f"Tendência - {dia['titulo']}"
-                notifier.send_photo(img_path, caption)
-                try:
-                    os.unlink(img_path)
-                except Exception:
-                    pass
+    _send_tendencia(notifier, tendencia)
 
     _save_state(_content_hash(tendencia))
     return True
