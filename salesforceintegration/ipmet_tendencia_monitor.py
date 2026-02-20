@@ -32,7 +32,12 @@ def _fetch_page():
         'User-Agent': 'REVO-FlightMonitor/1.0',
     })
     with urllib.request.urlopen(req, timeout=20) as resp:
-        return resp.read().decode('latin-1', errors='replace')
+        raw = resp.read()
+        # Tentar UTF-8 primeiro (pagina atual usa UTF-8)
+        try:
+            return raw.decode('utf-8')
+        except UnicodeDecodeError:
+            return raw.decode('latin-1', errors='replace')
 
 
 def _extrair_tendencia(html):
