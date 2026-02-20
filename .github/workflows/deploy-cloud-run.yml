@@ -1,0 +1,83 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'salesforceintegration/**'
+  workflow_dispatch:
+    inputs:
+      run_test:
+        description: 'Run test after deploy (--briefing or --ipmet-tendencia)'
+        required: false
+        default: ''
+
+env:
+  PROJECT_ID: codigos-465200
+  REGION: southamerica-east1
+  JOB_NAME: revo-flight-monitor
+  IMAGE_NAME: gcr.io/codigos-465200/revo-flight-monitor
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push Docker image
+        working-directory: salesforceintegration
+        run: |
+          gcloud builds submit --tag ${{ env.IMAGE_NAME }} .
+
+      - name: Deploy Cloud Run Job
+        run: |
+          gcloud run jobs update ${{ env.JOB_NAME }} \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }} \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 10m \
+            --set-env-vars "TZ=America/Sao_Paulo" \
+            --set-secrets "SF_USERNAME=sf-username:latest,SF_PASSWORD=sf-password:latest,SF_SECURITY_TOKEN=sf-token:latest,SF_DOMAIN=sf-domain:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_CHAT_ID=telegram-chat-id:latest" \
+            2>/dev/null || \
+          gcloud run jobs create ${{ env.JOB_NAME }} \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }} \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-retries 1 \
+            --task-timeout 10m \
+            --set-env-vars "TZ=America/Sao_Paulo" \
+            --set-secrets "SF_USERNAME=sf-username:latest,SF_PASSWORD=sf-password:latest,SF_SECURITY_TOKEN=sf-token:latest,SF_DOMAIN=sf-domain:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_CHAT_ID=telegram-chat-id:latest"
+
+      - name: Run test (if requested)
+        if: github.event.inputs.run_test != ''
+        run: |
+          gcloud run jobs execute ${{ env.JOB_NAME }} \
+            --region ${{ env.REGION }} \
+            --args='${{ github.event.inputs.run_test }}' \
+            --wait
+
+      - name: Show deploy info
+        run: |
+          echo "Deploy concluido!"
+          echo "Job: ${{ env.JOB_NAME }}"
+          echo "Region: ${{ env.REGION }}"
+          echo ""
+          echo "Para testar manualmente:"
+          echo "  gcloud run jobs execute ${{ env.JOB_NAME }} --region ${{ env.REGION }} --args='--briefing'"
+          echo "  gcloud run jobs execute ${{ env.JOB_NAME }} --region ${{ env.REGION }} --args='--ipmet-tendencia'"
