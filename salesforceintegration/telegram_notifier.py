@@ -66,6 +66,59 @@ HELIPONTOS = {
     'ZPFZ': {'nome': 'Porto Feliz Privado', 'lat': -23.2150, 'lon': -47.5250},
 }
 
+PREFIXOS_VALIDOS = {'PR-OMB', 'PR-OMH', 'PR-OOE'}
+
+
+def _extrair_prefixo(voo):
+    """Extrai o prefixo real da aeronave (PR-OMB, PR-OMH, PR-OOE) do registro Salesforce.
+
+    Prioridade:
+    1. Prefixo__r.Name  (relacionamento com Aeronave__c - mais confiavel)
+    2. Voo_Prefixo      (campo processado pelo salesforce_extractor)
+    3. PrefixoTexto__c  (campo texto - pode conter valores incorretos como PR-REV)
+    4. Prefixo__c       (campo lookup - pode ser ID)
+    """
+    # 1. Relationship field (mais confiavel)
+    prefixo_r = voo.get('Prefixo__r')
+    if isinstance(prefixo_r, dict):
+        name = prefixo_r.get('Name', '')
+        if name:
+            name = str(name).upper().strip()
+            if name in PREFIXOS_VALIDOS:
+                return name
+
+    # 2. Campo processado pelo extractor
+    voo_prefixo = voo.get('Voo_Prefixo', '')
+    if voo_prefixo:
+        voo_prefixo = str(voo_prefixo).upper().strip()
+        if voo_prefixo in PREFIXOS_VALIDOS:
+            return voo_prefixo
+
+    # 3. PrefixoTexto__c (pode ser incorreto, validar contra lista)
+    texto = voo.get('PrefixoTexto__c', '')
+    if texto:
+        texto = str(texto).upper().strip()
+        if texto in PREFIXOS_VALIDOS:
+            return texto
+
+    # 4. Prefixo__c (lookup - geralmente e um ID, mas tentar)
+    lookup = voo.get('Prefixo__c', '')
+    if lookup:
+        lookup = str(lookup).upper().strip()
+        if lookup in PREFIXOS_VALIDOS:
+            return lookup
+
+    # Fallback: retorna o melhor candidato encontrado (sem validacao)
+    for field in ('Prefixo__r', 'Voo_Prefixo', 'PrefixoTexto__c', 'Prefixo__c'):
+        val = voo.get(field)
+        if isinstance(val, dict):
+            val = val.get('Name', '')
+        if val and str(val).strip() and not str(val).startswith('a0'):
+            return str(val).strip()
+
+    return '-'
+
+
 class TelegramNotifier:
     def __init__(self):
         self.bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -494,9 +547,8 @@ Heliponto Helipark
         voos_por_heli = {h: [] for h in helicopteros}
         
         for voo in (voos or []):
-            prefixo = voo.get('PrefixoTexto__c') or voo.get('Prefixo__c') or ''
-            prefixo = str(prefixo).upper().strip()
-            
+            prefixo = _extrair_prefixo(voo)
+
             if prefixo in helicopteros:
                 voos_por_heli[prefixo].append(voo)
         
@@ -818,9 +870,8 @@ Heliponto Helipark
         pontos_usados = set()
         
         for voo in todos_voos:
-            prefixo = voo.get('PrefixoTexto__c') or voo.get('Prefixo__c') or ''
-            prefixo = str(prefixo).upper().strip()
-            
+            prefixo = _extrair_prefixo(voo)
+
             if prefixo not in helicopteros:
                 continue
             
@@ -1904,10 +1955,7 @@ Este bot irá notificar sobre:
                     except:
                         pass
                 
-                prefixo = voo.get('PrefixoTexto__c') or voo.get('Prefixo__c') or voo.get('Voo_Prefixo', '')
-                prefixo = str(prefixo).replace('<', '').replace('>', '').replace('&', '')
-                if not prefixo or prefixo.startswith('a0') or len(prefixo) > 10:
-                    prefixo = '-'
+                prefixo = _extrair_prefixo(voo)
                 
                 rota = voo.get('RotaAbreviada__c') or voo.get('Rota__c') or voo.get('Voo_Rota_ICAO') or ''
                 rota = str(rota).replace('<', '').replace('&', '')
@@ -1958,10 +2006,7 @@ Este bot irá notificar sobre:
                     except:
                         pass
                 
-                prefixo = voo.get('PrefixoTexto__c') or voo.get('Prefixo__c') or voo.get('Voo_Prefixo', '')
-                prefixo = str(prefixo).replace('<', '').replace('>', '').replace('&', '')
-                if not prefixo or prefixo.startswith('a0') or len(prefixo) > 10:
-                    prefixo = '-'
+                prefixo = _extrair_prefixo(voo)
                 
                 rota = voo.get('RotaAbreviada__c') or voo.get('Rota__c') or voo.get('Voo_Rota_ICAO') or ''
                 rota = str(rota).replace('<', '').replace('&', '')
@@ -2009,10 +2054,7 @@ Este bot irá notificar sobre:
                     except:
                         pass
 
-                prefixo = voo.get('PrefixoTexto__c') or voo.get('Prefixo__c') or voo.get('Voo_Prefixo', '')
-                prefixo = str(prefixo).replace('<', '').replace('>', '').replace('&', '')
-                if not prefixo or prefixo.startswith('a0') or len(prefixo) > 10:
-                    prefixo = '-'
+                prefixo = _extrair_prefixo(voo)
 
                 rota = voo.get('RotaAbreviada__c') or voo.get('Rota__c') or voo.get('Voo_Rota_ICAO') or ''
                 rota = str(rota).replace('<', '').replace('&', '')
@@ -2154,7 +2196,7 @@ def get_voos_salesforce(dias=3):
         query = f"""
         SELECT
             Id, Name, Tipo__c, Status__c, DataHoraVoo__c,
-            Rota__c, RotaAbreviada__c, Prefixo__c, PrefixoTexto__c,
+            Rota__c, RotaAbreviada__c, Prefixo__c, Prefixo__r.Name, PrefixoTexto__c,
             ContadorPassageiros__c, ReceitaVoo__c,
             ResponsavelpelaoperacaoTerrestre__c, Hostsembarque__c, Hostsdesembarque__c
         FROM Voo__c
