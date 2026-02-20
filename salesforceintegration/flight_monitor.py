@@ -2,6 +2,7 @@
 Monitor de Voos - REVO
 Executa verificações periódicas e envia notificações
 Inclui monitoramento meteorológico (METAR/TAF/SPECI)
+Inclui monitoramento da Tendencia do Tempo IPMet
 """
 
 import os
@@ -14,6 +15,7 @@ from weather_monitor import WeatherMonitor
 from proactive_weather_alert import ProactiveWeatherAlert
 from state_manager import get_state_manager
 from logger import setup_logging
+import ipmet_tendencia_monitor
 import pandas as pd
 
 logging = setup_logging('flight_monitor')
@@ -255,7 +257,23 @@ class FlightMonitor:
                 
         except Exception as e:
             logging.error(f"Erro ao verificar alertas proativos: {e}")
-    
+
+    def check_ipmet_tendencia(self):
+        """Verifica se a Tendencia do Tempo do IPMet mudou e envia via Telegram"""
+        logging.info("Verificando Tendencia do Tempo IPMet...")
+
+        try:
+            result = ipmet_tendencia_monitor.check_and_notify(self.notifier)
+            status = result.get('status', 'unknown')
+            if status == 'sent':
+                logging.info(f"IPMet Tendencia enviada - atualização: {result.get('atualizacao', '')}")
+            elif status == 'unchanged':
+                logging.info("IPMet Tendencia: sem mudanca")
+            else:
+                logging.warning(f"IPMet Tendencia: {status} - {result.get('detail', '')}")
+        except Exception as e:
+            logging.error(f"Erro ao verificar IPMet Tendencia: {e}")
+
     def run_scheduled(self, include_weather=True):
         """Executa o monitor com agendamento"""
         logging.info("=" * 60)
@@ -281,7 +299,9 @@ class FlightMonitor:
             schedule.every().day.at("17:00").do(self.send_weather_images)
             
             schedule.every(2).hours.do(self.check_proactive_weather_alerts)
-        
+
+            schedule.every(30).minutes.do(self.check_ipmet_tendencia)
+
         logging.info("Agendamentos configurados:")
         logging.info("  - Verificação de mudanças: a cada 15 minutos")
         logging.info("  - BRIEFING MATINAL (voos + meteo): 06:00")
@@ -290,6 +310,7 @@ class FlightMonitor:
             logging.info("  - Verificação meteorológica (alertas): a cada 30 minutos")
             logging.info("  - IMAGENS METEO (radar/satelite/nuvens): 09:00, 12:00, 15:00, 17:00")
             logging.info("  - ALERTAS PROATIVOS (voos proximos): a cada 2 horas")
+            logging.info("  - TENDENCIA IPMet: a cada 30 minutos (envia se mudou)")
         logging.info("")
         logging.info("Pressione Ctrl+C para parar o monitor")
         logging.info("=" * 60)
@@ -304,6 +325,7 @@ class FlightMonitor:
         if include_weather:
             self.check_weather()
             self.check_proactive_weather_alerts()
+            self.check_ipmet_tendencia()
         
         try:
             while True:
@@ -327,6 +349,7 @@ def main():
     parser.add_argument('--weather-images', action='store_true', help='Envia imagens meteo (radar/satelite/nuvens)')
     parser.add_argument('--proactive-alert', action='store_true', help='Verifica e envia alertas proativos para voos proximos')
     parser.add_argument('--briefing', action='store_true', help='Envia briefing matinal (voos + meteorologia)')
+    parser.add_argument('--ipmet-tendencia', action='store_true', help='Envia Tendencia do Tempo IPMet (forca envio)')
     parser.add_argument('--csv', type=str, help='Atualiza dados de um CSV antes de verificar')
     
     args = parser.parse_args()
@@ -350,6 +373,8 @@ def main():
         monitor.check_proactive_weather_alerts()
     elif args.briefing:
         monitor.send_morning_briefing()
+    elif args.ipmet_tendencia:
+        ipmet_tendencia_monitor.force_send(monitor.notifier)
     elif args.start:
         monitor.run_scheduled(include_weather=True)
     elif args.start_flights_only:
@@ -367,6 +392,7 @@ def main():
         print("  --weather-summary    Envia resumo meteorologico completo")
         print("  --weather-images     Envia imagens (radar/satelite/nuvens)")
         print("  --proactive-alert    Verifica alertas proativos para voos proximos")
+        print("  --ipmet-tendencia    Envia Tendencia do Tempo IPMet (forca envio)")
         print("")
         print("Use --help para mais opcoes")
 
