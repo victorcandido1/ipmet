@@ -2,7 +2,7 @@ name: Deploy to Cloud Run
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, 'claude/**']
     paths:
       - 'salesforceintegration/**'
   workflow_dispatch:
