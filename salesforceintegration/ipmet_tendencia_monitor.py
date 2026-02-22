@@ -6,6 +6,7 @@ Envia via Telegram quando houver mudanca.
 """
 
 import hashlib
+import html as html_module
 import json
 import logging
 import os
@@ -75,7 +76,7 @@ def _extrair_tendencia(html):
         secao, re.IGNORECASE,
     )
     atualizacao = atualiz_match.group(1).strip() if atualiz_match else ''
-    atualizacao = atualizacao.replace('&agrave;', 'à')
+    atualizacao = html_module.unescape(atualizacao)
 
     # Extrair cada dia (blocos <!--Dia N -->)
     dias = []
@@ -97,7 +98,7 @@ def _extrair_tendencia(html):
         if texto_match:
             texto = texto_match.group(1)
             texto = re.sub(r'<[^>]+>', ' ', texto)  # remover tags
-            texto = re.sub(r'&[a-z]+;', ' ', texto)  # remover entidades
+            texto = html_module.unescape(texto)  # converter entidades HTML
             texto = re.sub(r'\s+', ' ', texto).strip()
 
         if titulo or texto:
