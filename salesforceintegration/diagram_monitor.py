@@ -92,12 +92,12 @@ def send_diagram_scheduled(mode='morning'):
     mode='evening' (18h): voos de amanhã
     """
     from telegram_notifier import get_voos_salesforce, TelegramNotifier
-    
+
     notifier = TelegramNotifier()
-    voos_hoje, voos_amanha = get_voos_salesforce()
-    
+    voos_hoje, voos_amanha, _voos_depois, _voos_proximos = get_voos_salesforce()
+
     state = load_diagram_state()
-    
+
     if mode == 'morning':
         titulo_dia = 'HOJE'
         voos = voos_hoje
@@ -135,12 +135,12 @@ def check_and_send_changes():
     Verifica se houve mudanças nos voos e envia diagrama atualizado com alerta
     """
     from telegram_notifier import get_voos_salesforce, TelegramNotifier
-    
+
     notifier = TelegramNotifier()
-    voos_hoje, voos_amanha = get_voos_salesforce()
-    
+    voos_hoje, voos_amanha, _voos_depois, _voos_proximos = get_voos_salesforce()
+
     state = load_diagram_state()
-    
+
     mudou_hoje, add_hoje, rem_hoje = detect_changes(voos_hoje, state.get('voos_hoje', []))
     mudou_amanha, add_amanha, rem_amanha = detect_changes(voos_amanha, state.get('voos_amanha', []))
     

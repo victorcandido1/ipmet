@@ -144,12 +144,13 @@ class FlightMonitor:
         try:
             from telegram_notifier import get_voos_salesforce
 
-            voos_hoje, voos_amanha, voos_depois_amanha = get_voos_salesforce()
-            logging.info(f"Voos encontrados: {len(voos_hoje)} hoje, {len(voos_amanha)} amanha, {len(voos_depois_amanha)} depois de amanha")
+            voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias = get_voos_salesforce()
+            total_proximos = sum(len(d['voos']) for d in voos_proximos_dias)
+            logging.info(f"Voos encontrados: {len(voos_hoje)} hoje, {len(voos_amanha)} amanha, {len(voos_depois_amanha)} depois de amanha, {total_proximos} proximos dias")
 
             weather_data = self.weather_monitor.check_weather()
 
-            if self.notifier.send_morning_briefing(voos_hoje, voos_amanha, weather_data, voos_depois_amanha):
+            if self.notifier.send_morning_briefing(voos_hoje, voos_amanha, weather_data, voos_depois_amanha, voos_proximos_dias):
                 logging.info("Briefing matinal enviado com sucesso")
             else:
                 logging.error("Falha ao enviar briefing matinal")
@@ -218,9 +219,11 @@ class FlightMonitor:
         try:
             from telegram_notifier import get_voos_salesforce
             
-            voos_hoje, voos_amanha, voos_depois_amanha = get_voos_salesforce()
+            voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias = get_voos_salesforce()
 
             todos_proximos = list(voos_hoje) + list(voos_amanha) + list(voos_depois_amanha)
+            for dia_info in voos_proximos_dias:
+                todos_proximos.extend(dia_info['voos'])
             alerts = self.proactive_alert.check_upcoming_flights(voos_hoje, voos_amanha)
             
             if not alerts:

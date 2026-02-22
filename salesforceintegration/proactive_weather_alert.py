@@ -441,7 +441,7 @@ def main():
     proactive = ProactiveWeatherAlert(weather_monitor, notifier)
     
     print("Buscando voos...")
-    voos_hoje, voos_amanha = get_voos_salesforce()
+    voos_hoje, voos_amanha, _voos_depois, _voos_proximos = get_voos_salesforce()
     print(f"Encontrados: {len(voos_hoje)} hoje, {len(voos_amanha)} amanha")
     
     print(f"\nVoos nas proximas {proactive.hours_ahead} horas:")

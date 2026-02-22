@@ -380,7 +380,7 @@ Heliponto Helipark
         logging.info("Enviando voos por comando...")
 
         try:
-            voos_hoje, voos_amanha, voos_depois_amanha = get_voos_salesforce()
+            voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias = get_voos_salesforce()
 
             msg = f"<b>Voos de Hoje ({len(voos_hoje)}):</b>\n\n"
 
@@ -406,6 +406,18 @@ Heliponto Helipark
                 depois_amanha_date = (datetime.now() + timedelta(days=2)).strftime('%d/%m')
                 msg += f"\n<b>Depois de Amanha - {depois_amanha_date} ({len(voos_depois_amanha)}):</b>\n\n"
                 for voo in voos_depois_amanha:
+                    prefixo = voo.get('prefixo', 'N/A')
+                    origem = voo.get('origem', 'N/A')
+                    destino = voo.get('destino', 'N/A')
+                    hora = voo.get('hora', 'N/A')
+                    pax = voo.get('pax', 0)
+                    msg += f"{hora} {prefixo} | {origem}-{destino} | {pax}pax\n"
+
+            for dia_info in voos_proximos_dias:
+                label = dia_info['label']
+                dia_voos = dia_info['voos']
+                msg += f"\n<b>{label} ({len(dia_voos)}):</b>\n\n"
+                for voo in dia_voos:
                     prefixo = voo.get('prefixo', 'N/A')
                     origem = voo.get('origem', 'N/A')
                     destino = voo.get('destino', 'N/A')
@@ -635,9 +647,9 @@ Heliponto Helipark
         
         return output_path
     
-    def generate_helicopter_routes_chart(self, voos_hoje, voos_amanha=None, voos_depois_amanha=None):
+    def generate_helicopter_routes_chart(self, voos_hoje, voos_amanha=None, voos_depois_amanha=None, voos_proximos_dias=None):
         """
-        Gera diagramas separados: um para hoje, amanha e depois de amanha
+        Gera diagramas separados: um para hoje, amanha, depois de amanha e proximos dias
         Retorna lista de caminhos dos arquivos gerados
         """
         from datetime import datetime
@@ -674,6 +686,20 @@ Heliponto Helipark
             )
             charts.append(path_depois)
             logging.info(f"Diagrama de depois de amanha gerado: {path_depois}")
+
+        if voos_proximos_dias:
+            for dia_info in voos_proximos_dias:
+                label = dia_info['label']
+                dia_voos = dia_info['voos']
+                date_str = dia_info['date'].strftime('%d%m')
+                filename = f'chart_helicopteros_{date_str}.png'
+                path_dia = self._generate_single_day_diagram(
+                    dia_voos,
+                    f'ROTAS {label.upper()}',
+                    filename
+                )
+                charts.append(path_dia)
+                logging.info(f"Diagrama de {label} gerado: {path_dia}")
 
         return charts if charts else None
     
@@ -836,7 +862,7 @@ Heliponto Helipark
         ax.spines['bottom'].set_visible(False)
         ax.spines['left'].set_visible(False)
 
-    def generate_routes_map(self, voos_hoje, voos_amanha=None, voos_depois_amanha=None):
+    def generate_routes_map(self, voos_hoje, voos_amanha=None, voos_depois_amanha=None, voos_proximos_dias=None):
         """
         Gera mapa focado nas rotas reais
         Calcula limites dinamicamente baseado nos pontos utilizados
@@ -862,6 +888,9 @@ Heliponto Helipark
             todos_voos.extend(voos_amanha)
         if voos_depois_amanha:
             todos_voos.extend(voos_depois_amanha)
+        if voos_proximos_dias:
+            for dia_info in voos_proximos_dias:
+                todos_voos.extend(dia_info['voos'])
         
         if not todos_voos:
             return None
@@ -1403,19 +1432,21 @@ Heliponto Helipark
         """Busca voos atualizados e envia diagramas"""
         from telegram_notifier import get_voos_salesforce
 
-        voos_hoje, voos_amanha, voos_depois_amanha = get_voos_salesforce()
+        voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias = get_voos_salesforce()
 
-        chart_paths = self.generate_helicopter_routes_chart(voos_hoje, voos_amanha, voos_depois_amanha)
+        chart_paths = self.generate_helicopter_routes_chart(voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias)
         if chart_paths:
             for chart_path in chart_paths:
                 if 'hoje' in chart_path:
                     self.send_photo(chart_path, "Rotas Atualizadas - Hoje")
                 elif 'depois' in chart_path:
                     self.send_photo(chart_path, "Rotas Atualizadas - Depois de Amanha")
-                else:
+                elif 'amanha' in chart_path:
                     self.send_photo(chart_path, "Rotas Atualizadas - Amanha")
+                else:
+                    self.send_photo(chart_path, "Rotas Atualizadas - Proximos Dias")
 
-        map_paths = self.generate_routes_map(voos_hoje, voos_amanha, voos_depois_amanha)
+        map_paths = self.generate_routes_map(voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias)
         if map_paths:
             for map_path in map_paths:
                 if 'geral' in map_path:
@@ -1891,7 +1922,7 @@ Este bot irá notificar sobre:
         
         return self.send_message("\n".join(lines))
     
-    def send_morning_briefing(self, voos_hoje, voos_amanha, weather_data, voos_depois_amanha=None):
+    def send_morning_briefing(self, voos_hoje, voos_amanha, weather_data, voos_depois_amanha=None, voos_proximos_dias=None):
         """
         Envia briefing matinal completo com voos e meteorologia
         Cruza informacoes para alertar sobre possiveis problemas
@@ -2083,6 +2114,46 @@ Este bot irá notificar sobre:
 
             lines.append("")
 
+        if voos_proximos_dias:
+            for dia_info in voos_proximos_dias:
+                label = dia_info['label']
+                dia_voos = dia_info['voos']
+                lines.append(f"<b>📆 {label} ({len(dia_voos)})</b>")
+                lines.append("")
+
+                for voo in dia_voos[:3]:
+                    dt_voo = voo.get('DataHoraVoo__c') or voo.get('Voo_DataHora', '')
+                    hora = '--:--'
+                    if dt_voo:
+                        try:
+                            if isinstance(dt_voo, str):
+                                dt = datetime.fromisoformat(dt_voo.replace('Z', '+00:00'))
+                            else:
+                                dt = dt_voo
+                            dt_local = dt - timedelta(hours=3) if dt.tzinfo else dt
+                            hora = dt_local.strftime('%H:%M')
+                        except:
+                            pass
+
+                    prefixo = _extrair_prefixo(voo)
+
+                    rota = voo.get('RotaAbreviada__c') or voo.get('Rota__c') or voo.get('Voo_Rota_ICAO') or ''
+                    rota = str(rota).replace('<', '').replace('&', '')
+                    rota_parts = rota.replace('>', '-').split('-')
+                    if len(rota_parts) >= 2:
+                        rota_short = f"{rota_parts[0].strip()}-{rota_parts[-1].strip()}"
+                    else:
+                        rota_short = rota[:15] if rota else '-'
+
+                    pax = int(voo.get('ContadorPassageiros__c') or voo.get('Voo_Contador_Passageiros') or 0)
+
+                    lines.append(f"📌 {hora} <b>{prefixo}</b> | {rota_short} | {pax}pax")
+
+                if len(dia_voos) > 3:
+                    lines.append(f"   ... e mais {len(dia_voos) - 3} voos")
+
+                lines.append("")
+
         lines.append("<b>METEOROLOGIA SP</b>")
         lines.append("")
         
@@ -2117,17 +2188,19 @@ Este bot irá notificar sobre:
         result = self.send_message("\n".join(lines))
         
         try:
-            chart_paths = self.generate_helicopter_routes_chart(voos_hoje, voos_amanha, voos_depois_amanha)
+            chart_paths = self.generate_helicopter_routes_chart(voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias)
             if chart_paths:
                 for chart_path in chart_paths:
                     if 'hoje' in chart_path:
                         self.send_photo(chart_path, "Rotas de Hoje")
                     elif 'depois' in chart_path:
                         self.send_photo(chart_path, "Rotas de Depois de Amanha")
-                    else:
+                    elif 'amanha' in chart_path:
                         self.send_photo(chart_path, "Rotas de Amanha")
+                    else:
+                        self.send_photo(chart_path, f"Rotas Proximos Dias")
 
-            map_paths = self.generate_routes_map(voos_hoje, voos_amanha, voos_depois_amanha)
+            map_paths = self.generate_routes_map(voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias)
             if map_paths:
                 for map_path in map_paths:
                     if 'geral' in map_path:
@@ -2176,8 +2249,15 @@ def setup_telegram():
 """)
 
 
-def get_voos_salesforce(dias=3):
-    """Busca voos do Salesforce para hoje, amanha e depois de amanha"""
+def get_voos_salesforce(dias=7):
+    """Busca voos do Salesforce para os proximos dias (padrao: 7 dias).
+
+    Retorna: (voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias)
+      - voos_hoje: lista de voos de hoje
+      - voos_amanha: lista de voos de amanha
+      - voos_depois_amanha: lista de voos do dia +2
+      - voos_proximos_dias: lista de dicts [{date, label, voos}] para dias +3 ate +6
+    """
     try:
         from simple_salesforce import Salesforce
         from dotenv import load_dotenv
@@ -2191,7 +2271,7 @@ def get_voos_salesforce(dias=3):
         )
 
         hoje = datetime.now().strftime('%Y-%m-%d')
-        depois_amanha = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
+        ultimo_dia = (datetime.now() + timedelta(days=dias - 1)).strftime('%Y-%m-%d')
 
         query = f"""
         SELECT
@@ -2201,7 +2281,7 @@ def get_voos_salesforce(dias=3):
             ResponsavelpelaoperacaoTerrestre__c, Hostsembarque__c, Hostsdesembarque__c
         FROM Voo__c
         WHERE DataHoraVoo__c >= {hoje}T00:00:00Z
-        AND DataHoraVoo__c <= {depois_amanha}T23:59:59Z
+        AND DataHoraVoo__c <= {ultimo_dia}T23:59:59Z
         AND (Status__c LIKE '%Confirm%' OR Status__c LIKE '%Reserv%' OR Status__c LIKE '%Pago%')
         ORDER BY DataHoraVoo__c ASC
         """
@@ -2209,9 +2289,21 @@ def get_voos_salesforce(dias=3):
         result = sf.query_all(query)
         voos = result.get('records', [])
 
+        DIAS_SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom']
+
         voos_hoje = []
         voos_amanha = []
         voos_depois_amanha = []
+        # Dias +3 a +6 (4 dias adicionais)
+        voos_por_dia_extra = {}
+        for d in range(3, dias):
+            target_date = (datetime.now() + timedelta(days=d)).date()
+            dia_semana = DIAS_SEMANA[target_date.weekday()]
+            voos_por_dia_extra[target_date] = {
+                'date': target_date,
+                'label': f"{dia_semana} {target_date.strftime('%d/%m')}",
+                'voos': []
+            }
 
         for voo in voos:
             dt_voo = voo.get('DataHoraVoo__c', '')
@@ -2219,20 +2311,26 @@ def get_voos_salesforce(dias=3):
                 try:
                     dt = datetime.fromisoformat(dt_voo.replace('Z', '+00:00'))
                     dt_local = dt - timedelta(hours=3)
-                    if dt_local.date() == datetime.now().date():
+                    voo_date = dt_local.date()
+                    if voo_date == datetime.now().date():
                         voos_hoje.append(voo)
-                    elif dt_local.date() == (datetime.now() + timedelta(days=1)).date():
+                    elif voo_date == (datetime.now() + timedelta(days=1)).date():
                         voos_amanha.append(voo)
-                    elif dt_local.date() == (datetime.now() + timedelta(days=2)).date():
+                    elif voo_date == (datetime.now() + timedelta(days=2)).date():
                         voos_depois_amanha.append(voo)
+                    elif voo_date in voos_por_dia_extra:
+                        voos_por_dia_extra[voo_date]['voos'].append(voo)
                 except:
                     pass
 
-        return voos_hoje, voos_amanha, voos_depois_amanha
+        voos_proximos_dias = [v for v in voos_por_dia_extra.values() if v['voos']]
+        voos_proximos_dias.sort(key=lambda x: x['date'])
+
+        return voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias
 
     except Exception as e:
         logging.error(f"Erro ao buscar voos do Salesforce: {e}")
-        return [], [], []
+        return [], [], [], []
 
 
 def main():
@@ -2271,15 +2369,16 @@ def main():
         from weather_monitor import WeatherMonitor
         
         print("Buscando voos do Salesforce...")
-        voos_hoje, voos_amanha, voos_depois_amanha = get_voos_salesforce()
-        print(f"Encontrados: {len(voos_hoje)} voos hoje, {len(voos_amanha)} voos amanha, {len(voos_depois_amanha)} depois de amanha")
+        voos_hoje, voos_amanha, voos_depois_amanha, voos_proximos_dias = get_voos_salesforce()
+        total_proximos = sum(len(d['voos']) for d in voos_proximos_dias)
+        print(f"Encontrados: {len(voos_hoje)} voos hoje, {len(voos_amanha)} voos amanha, {len(voos_depois_amanha)} depois de amanha, {total_proximos} proximos dias")
 
         print("Buscando meteorologia...")
         weather_mon = WeatherMonitor()
         weather_data = weather_mon.check_weather()
 
         print("Enviando briefing...")
-        if notifier.send_morning_briefing(voos_hoje, voos_amanha, weather_data, voos_depois_amanha):
+        if notifier.send_morning_briefing(voos_hoje, voos_amanha, weather_data, voos_depois_amanha, voos_proximos_dias):
             print("Briefing matinal enviado!")
         else:
             print("Falha ao enviar briefing")
