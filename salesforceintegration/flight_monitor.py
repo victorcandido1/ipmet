@@ -300,7 +300,10 @@ class FlightMonitor:
             
             schedule.every(2).hours.do(self.check_proactive_weather_alerts)
 
-            schedule.every(30).minutes.do(self.check_ipmet_tendencia)
+            schedule.every().day.at("08:00").do(self.check_ipmet_tendencia)
+            schedule.every().day.at("12:00").do(self.check_ipmet_tendencia)
+            schedule.every().day.at("17:00").do(self.check_ipmet_tendencia)
+            schedule.every().day.at("20:00").do(self.check_ipmet_tendencia)
 
         logging.info("Agendamentos configurados:")
         logging.info("  - Verificação de mudanças: a cada 15 minutos")
@@ -310,7 +313,7 @@ class FlightMonitor:
             logging.info("  - Verificação meteorológica (alertas): a cada 30 minutos")
             logging.info("  - IMAGENS METEO (radar/satelite/nuvens): 09:00, 12:00, 15:00, 17:00")
             logging.info("  - ALERTAS PROATIVOS (voos proximos): a cada 2 horas")
-            logging.info("  - TENDENCIA IPMet: a cada 30 minutos (envia se mudou)")
+            logging.info("  - TENDENCIA IPMet: 08:00, 12:00, 17:00, 20:00 (envia se mudou)")
         logging.info("")
         logging.info("Pressione Ctrl+C para parar o monitor")
         logging.info("=" * 60)
